@@ -80,43 +80,109 @@ class InnerNode extends BPlusNode {
     // See BPlusNode.get.
     @Override
     public LeafNode get(DataBox key) {
-        // TODO(proj2): implement
-
-        return null;
+        // Done (proj2): implement
+        int index = InnerNode.numLessThanEqual(key, keys);
+        return getChild(index).get(key);
     }
 
     // See BPlusNode.getLeftmostLeaf.
     @Override
     public LeafNode getLeftmostLeaf() {
         assert(children.size() > 0);
-        // TODO(proj2): implement
-
-        return null;
+        // Done (proj2): implement
+        return getChild(0).getLeftmostLeaf();
     }
 
     // See BPlusNode.put.
     @Override
     public Optional<Pair<DataBox, Long>> put(DataBox key, RecordId rid) {
-        // TODO(proj2): implement
+        // Done (proj2): implement
 
-        return Optional.empty();
+        int index = InnerNode.numLessThanEqual(key, keys);
+        BPlusNode childNode = getChild(index);
+
+        Optional<Pair<DataBox, Long>> potentialNewNode = childNode.put(key, rid);
+        if (!potentialNewNode.isPresent()) {
+            // childnode doesn't split, so no need to change this node above
+            // no need to sync() as no data modification in this innerNode;
+            return Optional.empty();
+        }
+
+        Pair<DataBox, Long> newNode = potentialNewNode.get();
+        DataBox newEntryKey = newNode.getFirst();
+        Long newEntryPageNum = newNode.getSecond();
+        keys.add(index, newEntryKey);
+        children.add(index + 1, newEntryPageNum);
+
+        if (keys.size() <= 2 * metadata.getOrder()) {
+            // insert into this innerNode in place, no need to split
+            sync();
+            return Optional.empty();
+        } else {
+            Pair<DataBox, Long> splitResult = splitInnerNode();
+            sync();
+            return Optional.of(splitResult);
+        }
+    }
+
+    /** currently, this innerNode has 2d+1 keys and 2d+2 children
+     *  cause this innerNode to split into two nodes with d keys and d+1 children
+     *  push the extra 1 key and page number of the newly created innerNode up
+     *  */
+    private Pair<DataBox, Long> splitInnerNode() {
+        int order = metadata.getOrder();
+        List<DataBox> keysOfNewRightSibling = keys.subList(order + 1, 2 * order + 1); // length d
+        List<Long> childrenOfNewRightSibling = children.subList(order + 1, 2 * order + 2); // length d + 1
+        // create a new right sibling
+        InnerNode newRightSibling = new InnerNode(metadata, bufferManager, keysOfNewRightSibling, childrenOfNewRightSibling, treeContext);
+
+        DataBox extraKey = keys.get(order);
+        Long pageNumberOfNewInnerNode = newRightSibling.getPage().getPageNum();
+
+        // update the keys and children of current innerNode
+        keys = keys.subList(0, order);
+        children = children.subList(0, order + 1);
+        return new Pair<>(extraKey, pageNumberOfNewInnerNode);
     }
 
     // See BPlusNode.bulkLoad.
     @Override
     public Optional<Pair<DataBox, Long>> bulkLoad(Iterator<Pair<DataBox, RecordId>> data,
             float fillFactor) {
-        // TODO(proj2): implement
+        // Done (proj2): implement
 
-        return Optional.empty();
+        int order = metadata.getOrder();
+        BPlusNode childPtr;
+        Optional<Pair<DataBox, Long>> optionalPair;
+        Pair<DataBox, Long> pair;
+
+        for (int i = children.size() - 1; i < 2 * order + 1; ++i) {
+            childPtr = getChild(i);
+            optionalPair = childPtr.bulkLoad(data, fillFactor);
+            if (!optionalPair.isPresent()) {
+                sync();
+                return Optional.empty();
+            }
+            pair = optionalPair.get();
+            DataBox key = pair.getFirst();
+            Long secondLeafNodePageNum = pair.getSecond();
+            keys.add(key);
+            children.add(secondLeafNodePageNum);
+        }
+
+        Pair<DataBox, Long> splitResult = splitInnerNode();
+
+        sync();
+        return Optional.of(splitResult);
     }
+
+
 
     // See BPlusNode.remove.
     @Override
     public void remove(DataBox key) {
-        // TODO(proj2): implement
-
-        return;
+        // Done (proj2): implement
+        get(key).remove(key);
     }
 
     // Helpers /////////////////////////////////////////////////////////////////

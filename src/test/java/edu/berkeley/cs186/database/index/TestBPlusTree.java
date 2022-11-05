@@ -470,6 +470,41 @@ public class TestBPlusTree {
         }
     }
 
+    @Test(expected = NoSuchElementException.class)
+    @Category(PublicTests.class)
+    public void testEverythingDeleted() {
+        List<DataBox> keys = new ArrayList<>();
+        List<RecordId> rids = new ArrayList<>();
+        List<RecordId> sortedRids = new ArrayList<>();
+        for (int i = 0; i < 1000; ++i) {
+            keys.add(new IntDataBox(i));
+            rids.add(new RecordId(i, (short) i));
+            sortedRids.add(new RecordId(i, (short) i));
+        }
+
+        // Try trees with different orders.
+        for (int d = 2; d < 5; ++d) {
+
+            BPlusTree tree = getBPlusTree(Type.intType(), d);
+            for (int i = 0; i < keys.size(); ++i) {
+                tree.put(keys.get(i), rids.get(i));
+            }
+
+            for (int i = 0; i < keys.size(); ++i) {
+                tree.remove(new IntDataBox(i));
+            }
+
+            Iterator<RecordId> scanAll = tree.scanAll();
+            Iterator<RecordId> scanGreater = tree.scanGreaterEqual(new IntDataBox(3));
+
+            assertEquals(false, scanAll.hasNext());
+            assertEquals(false, scanGreater.hasNext());
+
+            scanGreater.next();
+
+        }
+    }
+
     @Test
     @Category(SystemTests.class)
     public void testMaxOrder() {
