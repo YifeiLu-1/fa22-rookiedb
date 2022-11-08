@@ -10,6 +10,7 @@ import edu.berkeley.cs186.database.table.Record;
 import edu.berkeley.cs186.database.table.Schema;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * QueryPlan provides a set of functions to generate simple queries. Calling the
@@ -575,8 +576,26 @@ public class QueryPlan {
      */
     public QueryOperator minCostSingleAccess(String table) {
         QueryOperator minOp = new SequentialScanOperator(this.transaction, table);
+        minOp = addEligibleSelections(minOp, -1);
+        int minCost = minOp.estimateIOCost();
 
         // TODO(proj3_part2): implement
+        List<Integer> indexColumns = getEligibleIndexColumns(table);
+        for (int indexColumn : indexColumns) {
+            SelectPredicate predicate = this.selectPredicates.get(indexColumn);
+            QueryOperator candidateOperator = new IndexScanOperator(
+                    this.transaction, table,
+                    predicate.column,
+                    predicate.operator,
+                    predicate.value
+            );
+            candidateOperator = addEligibleSelections(candidateOperator, indexColumn);
+            int currentCost = candidateOperator.estimateIOCost();
+            if (currentCost < minCost) {
+                minOp = candidateOperator;
+                minCost = currentCost;
+            }
+        }
         return minOp;
     }
 
@@ -646,6 +665,37 @@ public class QueryPlan {
         //      calculate the cheapest join with the new table (the one you
         //      fetched an operator for from pass1Map) and the previously joined
         //      tables. Then, update the result map if needed.
+        for (Map.Entry<Set<String>, QueryOperator> prevEntry : prevMap.entrySet()) {
+            Set<String> tables = prevEntry.getKey();
+            QueryOperator leftJoinOperator = prevEntry.getValue();
+            for (JoinPredicate predicate: this.joinPredicates) {
+                String leftTable = predicate.leftTable, leftColumn = predicate.leftColumn;
+                String rightTable = predicate.rightTable, rightColumn = predicate.rightColumn;
+                String leftJoinColumn;
+                String rightJoinColumn;
+                String rightJoinTable;
+                QueryOperator rightJoinOperator;
+                if (tables.contains(leftTable) && !tables.contains(rightTable)) {
+                    rightJoinTable = rightTable;
+                    rightJoinOperator = pass1Map.get(Collections.singleton(rightTable));
+                    rightJoinColumn = rightColumn;
+                    leftJoinColumn = leftColumn;
+                } else if (!tables.contains(leftTable) && tables.contains(rightTable)) {
+                    rightJoinTable = leftTable;
+                    rightJoinOperator = pass1Map.get(Collections.singleton(leftTable));
+                    rightJoinColumn = leftColumn;
+                    leftJoinColumn = rightColumn;
+                } else {
+                    continue;
+                }
+                QueryOperator minJoinOperator = minCostJoinType(leftJoinOperator, rightJoinOperator, leftJoinColumn, rightJoinColumn);
+
+                Set<String> resultKey = tables.stream().collect(Collectors.toSet());;
+                resultKey.add(rightJoinTable);
+
+                result.put(resultKey, minJoinOperator);
+            }
+        }
         return result;
     }
 
@@ -684,18 +734,33 @@ public class QueryPlan {
     public Iterator<Record> execute() {
         this.transaction.setAliasMap(this.aliases);
         // TODO(proj3_part2): implement
+        Map<Set<String>, QueryOperator> pass1Map = new HashMap<>();
         // Pass 1: For each table, find the lowest cost QueryOperator to access
         // the table. Construct a mapping of each table name to its lowest cost
         // operator.
-        //
+        for (String table : tableNames) {
+            QueryOperator minSingleOperator = minCostSingleAccess(table);
+            pass1Map.put(Collections.singleton(table), minSingleOperator);
+        }
+
         // Pass i: On each pass, use the results from the previous pass to find
         // the lowest cost joins with each table from pass 1. Repeat until all
         // tables have been joined.
-        //
+        Map<Set<String>, QueryOperator> prevMap = pass1Map;
+        for (int i = 1; i < tableNames.size(); i++) {
+            prevMap = minCostJoins(prevMap, pass1Map);
+        }
+
         // Set the final operator to the lowest cost operator from the last
         // pass, add group by, project, sort and limit operators, and return an
         // iterator over the final operator.
-        return this.executeNaive(); // TODO(proj3_part2): Replace this!
+        finalOperator = minCostOperator(prevMap);
+        this.addGroupBy();
+        this.addProject();
+        this.addSort();
+        this.addLimit();
+
+        return finalOperator.iterator(); // TODO(proj3_part2): Replace this!
     }
 
     // EXECUTE NAIVE ///////////////////////////////////////////////////////////

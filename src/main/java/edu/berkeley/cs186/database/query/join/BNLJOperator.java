@@ -5,6 +5,7 @@ import edu.berkeley.cs186.database.common.iterator.BacktrackingIterator;
 import edu.berkeley.cs186.database.query.JoinOperator;
 import edu.berkeley.cs186.database.query.QueryOperator;
 import edu.berkeley.cs186.database.table.Record;
+import edu.berkeley.cs186.database.table.Schema;
 
 import java.util.Iterator;
 import java.util.NoSuchElementException;
@@ -88,6 +89,15 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextLeftBlock() {
             // TODO(proj3_part1): implement
+            if (!leftSourceIterator.hasNext()) {
+                return;
+            }
+            leftBlockIterator = QueryOperator.getBlockIterator(
+                    leftSourceIterator, getLeftSource().getSchema(), numBuffers - 2);
+            leftBlockIterator.markNext();
+            if (leftBlockIterator.hasNext()) {
+                leftRecord = leftBlockIterator.next();
+            }
         }
 
         /**
@@ -103,6 +113,12 @@ public class BNLJOperator extends JoinOperator {
          */
         private void fetchNextRightPage() {
             // TODO(proj3_part1): implement
+            if (!rightSourceIterator.hasNext()) {
+                return;
+            }
+            rightPageIterator = QueryOperator.getBlockIterator(
+                    rightSourceIterator, getRightSource().getSchema(), 1);
+            rightPageIterator.markNext();
         }
 
         /**
@@ -112,10 +128,54 @@ public class BNLJOperator extends JoinOperator {
          * You may find JoinOperator#compare useful here. (You can call compare
          * function directly from this file, since BNLJOperator is a subclass
          * of JoinOperator).
+         *
+         * Case 1: The right page iterator has a value to yield
+         * 	advance right, looking for a new pair
+         *
+         * Case 2: The right page iterator doesn't have a value to yield but the left block iterator does
+         * 	reset right iterator
+         * 	advance left
+         *
+         * Case 3: Neither the right page nor left block iterators have values to yield, but there's more right pages
+         * 	fetch next right page
+         * 	reset left block iterator
+         *
+         * Case 4: Neither right page nor left block iterators have values nor are there more right pages, but there are still left blocks
+         * 	reset rightsource iterator
+         * 	fetch next right page
+         * 	fetch next left block
+         *
          */
         private Record fetchNextRecord() {
             // TODO(proj3_part1): implement
-            return null;
+            if (leftRecord == null) {
+                // The left source was empty, nothing to fetch
+                return null;
+            }
+            while(true) {
+                if (this.rightPageIterator.hasNext()) {
+                    // there's a next right record, join it if there's a match
+                    Record rightRecord = rightPageIterator.next();
+                    if (compare(leftRecord, rightRecord) == 0) {
+                        return leftRecord.concat(rightRecord);
+                    }
+                } else if (this.leftBlockIterator.hasNext()){
+                    this.leftRecord = leftBlockIterator.next();
+                    this.rightPageIterator.reset();
+                } else if (this.rightSourceIterator.hasNext()) {
+                    fetchNextRightPage();
+                    this.leftBlockIterator.reset();
+                    // the leftRecord must be updated
+                    leftRecord = leftBlockIterator.next();
+                } else if (this.leftSourceIterator.hasNext()) {
+                    this.rightSourceIterator.reset();
+                    fetchNextRightPage();
+                    fetchNextLeftBlock();
+                } else {
+                    // if you're here then there are no more records to fetch
+                    return null;
+                }
+            }
         }
 
         /**
