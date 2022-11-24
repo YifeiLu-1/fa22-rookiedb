@@ -42,8 +42,47 @@ public class LockUtil {
         LockType explicitLockType = lockContext.getExplicitLockType(transaction);
 
         // TODO(proj4_part2): implement
-        return;
+        if (LockType.substitutable(effectiveLockType, requestType)) {
+            return;
+        }
+        if (explicitLockType == LockType.IX && requestType == LockType.S) {
+            lockContext.promote(transaction, LockType.SIX);
+        } else if (explicitLockType.isIntent()) {
+            if (explicitLockType.equals(LockType.IS) && requestType.equals(LockType.X)) {
+                lockContext.promote(transaction, requestType);
+                lockContext.escalate(transaction);
+            } else {
+                lockContext.escalate(transaction);
+            }
+        } else  {
+            LockType parentRequestType = LockType.parentLock(requestType);
+            acquireParentIntentLocks(transaction, parentContext, parentRequestType);
+            if (explicitLockType == LockType.NL) {
+                lockContext.acquire(transaction, requestType);
+            } else {
+                lockContext.promote(transaction, requestType);
+            }
+        }
     }
 
+
     // TODO(proj4_part2) add any helper methods you want
+    private static void acquireParentIntentLocks(TransactionContext transaction, LockContext lockContext, LockType requestType) {
+        if (lockContext == null) {
+            return;
+        }
+        LockContext parentContext = lockContext.parentContext();
+        LockType explicitLockType = lockContext.getExplicitLockType(transaction);
+        acquireParentIntentLocks(transaction, parentContext, requestType);
+        if (LockType.substitutable(explicitLockType, requestType)) {
+            return;
+        }
+        if (explicitLockType == LockType.NL) {
+            lockContext.acquire(transaction, requestType);
+        } else if (explicitLockType == LockType.S && requestType == LockType.IX) {
+            lockContext.promote(transaction, LockType.SIX);
+        } else {
+            lockContext.promote(transaction, requestType);
+        }
+    }
 }

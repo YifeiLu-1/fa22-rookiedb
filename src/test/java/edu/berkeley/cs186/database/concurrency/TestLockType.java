@@ -29,15 +29,15 @@ public class TestLockType {
      * ----+-----+-----+-----+-----+-----+-----
      * NL  |  T  |  T  |  T  |  T  |  T  |  T
      * ----+-----+-----+-----+-----+-----+-----
-     * IS  |  T  |  T  |  T  |  T  |     |
+     * IS  |  T  |  T  |  T  |  T  |  T  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * IX  |  T  |  T  |  T  |  F  |     |
+     * IX  |  T  |  T  |  T  |  F  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
      * S   |  T  |  T  |  F  |  T  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * SIX |  T  |     |     |  F  |     |
+     * SIX |  T  |  T  |  F  |  F  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * X   |  T  |     |     |  F  |     |  F
+     * X   |  T  |  F  |  F  |  F  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
      *
      * The filled in cells are covered by the public tests.
@@ -85,8 +85,22 @@ public class TestLockType {
         // Intent locks are compatible with each other
         assertTrue(LockType.compatible(LockType.IS, LockType.IS));
         assertTrue(LockType.compatible(LockType.IS, LockType.IX));
+        assertTrue(LockType.compatible(LockType.IS, LockType.SIX));
         assertTrue(LockType.compatible(LockType.IX, LockType.IS));
+        assertTrue(LockType.compatible(LockType.SIX, LockType.IS));
+
+        assertFalse(LockType.compatible(LockType.IS, LockType.X));
+        assertFalse(LockType.compatible(LockType.X, LockType.IS));
+
+        assertFalse(LockType.compatible(LockType.IX, LockType.SIX));
+        assertFalse(LockType.compatible(LockType.IX, LockType.X));
+        assertFalse(LockType.compatible(LockType.X, LockType.IX));
+        assertFalse(LockType.compatible(LockType.SIX, LockType.IX));
         assertTrue(LockType.compatible(LockType.IX, LockType.IX));
+
+        assertFalse(LockType.compatible(LockType.SIX, LockType.SIX));
+        assertFalse(LockType.compatible(LockType.SIX, LockType.X));
+        assertFalse(LockType.compatible(LockType.X, LockType.SIX));
     }
 
     @Test
@@ -121,11 +135,11 @@ public class TestLockType {
      * ----+-----+-----+-----+-----+-----+-----
      * IX  |  T  |  T  |  T  |  T  |  T  |  T
      * ----+-----+-----+-----+-----+-----+-----
-     * S   |  T  |     |     |     |     |
+     * S   |  T  |     |     |  T  |     |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * SIX |  T  |     |     |     |     |
+     * SIX |  T  |  F  |  T  |  F  |  F  |  T
      * ----+-----+-----+-----+-----+-----+-----
-     * X   |  T  |     |     |     |     |
+     * X   |  T  |     |     |  T  |     |  T
      * ----+-----+-----+-----+-----+-----+-----
      *
      * The filled in cells are covered by the public test.
@@ -179,15 +193,15 @@ public class TestLockType {
      * ----+-----+-----+-----+-----+-----+-----
      * NL  |  T  |  F  |  F  |  F  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * IS  |     |  T  |  F  |  F  |     |  F
+     * IS  |  T  |  T  |  F  |  F  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * IX  |     |  T  |  T  |  F  |     |  F
+     * IX  |  T  |  T  |  T  |  F  |  T  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * S   |     |     |     |  T  |     |  F
+     * S   |  T  |  T  |  F  |  T  |  F  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * SIX |     |     |     |  T  |     |  F
+     * SIX |  T  |  T  |  T  |  T  |  T  |  F
      * ----+-----+-----+-----+-----+-----+-----
-     * X   |     |     |     |  T  |     |  T
+     * X   |  T  |  T  |  T  |  T  |  T  |  T
      * ----+-----+-----+-----+-----+-----+-----
      *
      * The filled in cells are covered by the public test.
